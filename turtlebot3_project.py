@@ -25,11 +25,22 @@ class Turtlebot3
         self.desired_anlge = 0
         self.yaw_radians = 0
         self.last_rotation = 0
+        self.pillar_distance = 0
+        self.pillar_angle = 0 
+        self.line_distance = 0 
+        self.line_angle = 0
         self.x = 0
         self.y = 0
+        self.lidarData = []
 
         self.states = 1
         self.isSearching = True
+        self.isFinish = False
+        self.finishPosition = True
+        self.finishAngluer = True
+        self.finishLineFollowing = False
+
+        self.move_cmd = Twist()
 
         # initial command publisher
         self.cmd_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
@@ -56,8 +67,10 @@ class Turtlebot3
     def GotoPoint(self, x, y):
 
         """
-        Input: the desired posistion
-        Robot will go to the desired posistion
+        Input: the desired position
+        Robot will go to the desired position
+
+        Return isFinish
         """
 
         (position, rotation) = self.GetOdom()
@@ -78,20 +91,23 @@ class Turtlebot3
             elif self.last_rotation < -pi+0.1 and rotation > 0:
                 rotation = -2*pi + rotation
 
-            move_cmd.angular.z = angular_speed * path_angle-rotation
-            move_cmd.linear.x = min(linear_speed * self.distance, 0.1)
+            self.move_cmd.angular.z = angular_speed * path_angle-rotation
+            self.move_cmd.linear.x = min(linear_speed * self.distance, 0.1)
 
-            if move_cmd.angular.z > 0:
-                move_cmd.angular.z = min(move_cmd.angular.z, 1.5)
+            if self.move_cmd.angular.z > 0:
+                self.move_cmd.angular.z = min(self.move_cmd.angular.z, 1.5)
             else:
-                move_cmd.angular.z = max(move_cmd.angular.z, -1.5)
+                self.self.move_cmd.angular.z = max(self.move_cmd.angular.z, -1.5)
 
             self.last_rotation = rotation
-            self.cmd_pub.publish(move_cmd)
+            self.cmd_pub.publish(self.move_cmd)
+            isFinish = False
+            return isFinish
         else
             rospy.loginfo("Stopping the robot...")
             self.cmd_pub.publish(Twist())
-    
+            isFinish = True
+            return isFinish
 
 
     def FacetoPoint(self, z):
@@ -108,51 +124,39 @@ class Turtlebot3
             (position, rotation) = self.GetOdom()
             if goal_z >= 0:
                 if rotation <= goal_z and rotation >= goal_z - pi:
-                    move_cmd.linear.x = 0.00
-                    move_cmd.angular.z = 0.5
+                    self.move_cmd.linear.x = 0.00
+                    self.move_cmd.angular.z = 0.5
                 else:
-                    move_cmd.linear.x = 0.00
-                    move_cmd.angular.z = -0.5
+                    self.move_cmd.linear.x = 0.00
+                    self.move_cmd.angular.z = -0.5
             else:
                 if rotation <= goal_z + pi and rotation > goal_z:
-                    move_cmd.linear.x = 0.00
-                    move_cmd.angular.z = -0.5
+                    self.move_cmd.linear.x = 0.00
+                    self.move_cmd.angular.z = -0.5
                 else:
-                    move_cmd.linear.x = 0.00
-                    move_cmd.angular.z = 0.5
-            self.cmd_pub.publish(move_cmd)
+                    self.move_cmd.linear.x = 0.00
+                    self.move_cmd.angular.z = 0.5
+            self.cmd_pub.publish(self.move_cmd)
+            isFinish = False
+            return isFinish
         else:
             rospy.loginfo("Stopping the robot...")
             self.cmd_pub.publish(Twist())
+            isFinish = False
+            return isFinish
         
 
 
-    def Searching_target(self):
-
-        """
-        Robot will turn right 60 degrees, for searching target
-        """
-
-        if self.isSearching
-            self.desired_anlge = Get_desired_angle(60) # turn right 60 degrees
-            self.isSearching = False
-        else    
-            if self.error_angle < 0.05
-                self.cmd_pub.publish(Twist()) # stop robot
-                self.isSearching = True
-            else
-                FacetoPoint(self.desired_anlge)
-
-
-
-    def Get_desired_angle(self, angle):
+    def GetDesiredAngle(self, angle):
+        
         """
         Input: Desired turning angle in degrees
             passtive: turn right
             negetive: turn left
         Return: desired_angle in robot coordinate in degrees
         """
-        [posistion, rotation] = self.GetOdom()
+
+        [position, rotation] = self.GetOdom()
         current_angle = np.rad2deg(rotation)
         desired_anlge = current_angle + angle
 
@@ -167,9 +171,9 @@ class Turtlebot3
     def GetOdom(self):
 
         """
-        Get tf massage and transfer to posistion and rotation
+        Get tf massage and transfer to position and rotation
 
-        Return posistion, yaw_angle
+        Return position, yaw_angle
         """
 
         try:
@@ -182,12 +186,67 @@ class Turtlebot3
 
         return (Point(*trans), rotation[2])
 
+    def GetDesiredPosition(self, distance, angle):
+        
+        """
+        Input: camera message
+            distance:robot to the target
+            angle: heading change angle
+        return 
+            x,y: location based on robot
+        """
+        [position, rotation] = self.GetOdom()
+        x = position.x = distance*np.cos(angle)
+        y = position.y = distance*np.sin(angle)
+
+        return x, y
+
+
+
+    def SearchingTarget(self):
+
+        """
+        Robot will turn right 60 degrees, for searching target
+        """
+
+        if self.isSearching
+            self.desired_anlge = GetDesiredAngle(60) # turn right 60 degrees
+            self.isSearching = False
+        else    
+            if self.isFinish
+                self.cmd_pub.publish(Twist()) # stop robot
+                self.isSearching = True
+            else
+                self.isFinish = self.FacetoPoint(self.desired_anlge)
+
+
+    def ControlTurtlebot(self, v, z):
+        
+        """
+        send heading velocity in m/s and the angle velocity in rads
+        """
+        msg = Twist()
+        msg.linear.x = v
+        msg.angular.z = z
+
+        self.cmd_pub.publisher(msg)
+
+
     def FollowLine(self):
 
         """
         Base on camera data moving to white line and following the white to the center
    
         """
+        x, y = self.GetDesiredPosition(self.line_distance, self.line_angle)
+        if self.isFinish
+            self.cmd_pub.publish(Twist()) # stop robot
+            self.finishPosition = True
+            self.finishLineFollowing = True
+        else
+            self.isFinish = self.GotoPoint(x, y)
+
+
 
 
     def GotoPillar(self);
@@ -196,6 +255,12 @@ class Turtlebot3
         Base on camera data moving to center
    
         """
+        x, y = self.GetDesiredPosition(self.pillar_distance, self.pillar_angle)
+        if self.isFinish
+            self.cmd_pub.publish(Twist()) # stop robot
+            self.FinishPosition = True
+        else
+            self.isFinish = self.GotoPoint(x, y)
 
 
     def AvoidObject(self):
@@ -204,15 +269,37 @@ class Turtlebot3
         Base on lidar data avoid static object
    
         """
+        for i in range(360):
+            if i <= 15 or i > 335:
+                if data.ranges[i] >= LIDAR_ERR:
+                    scan_filter.append(data.ranges[i])
 
-    
+        minDist = min(scan_filter)
+        if minDist < 0.5
+            self.cmd_pub.publish(Twist())
+        else
+            self.states = 1
+            return
+
+
     def FiniteMachine(self);
 
         """
         Running all processing  
    
         """
-
+        self.AvoidObject()
+        if self.states == 1
+            self.SearchingTarget()
+            if self.finishLineFollowing
+                self.states = 3
+        elif self.states == 2
+            self.FollowLine()
+        elif self.states == 3
+            self.GotoPillar()
+        else
+            self.cmd_pub.publish(Twist())
+            rospy.loginfo("Stopping the robot...")
 
     def CallbackCam(self, data):
 
@@ -220,8 +307,11 @@ class Turtlebot3
         Subscribe cammera data
    
         """
+        self.pillar_distance = data.linear.x
+        self.pillar_angle = data.linear.y 
+        self.line_distance = data.angular.x 
+        self.line_angle = data.angular.y
 
-        [posistion, rotation] = self.GetOdom()
 
 
     def CallbackLider(self, data):
@@ -231,12 +321,9 @@ class Turtlebot3
    
         """
 
-        self.scan_filter = []
+        self.lidarData = data.ranges
 
-        for i in range(360):
-            if i <= 15 or i > 335:
-                if data.ranges[i] >= LIDAR_ERR:
-                    self.scan_filter.append(data.ranges[i])
+
 
 
 
