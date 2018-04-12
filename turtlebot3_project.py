@@ -238,13 +238,13 @@ class Turtlebot3
         Base on camera data moving to white line and following the white to the center
    
         """
-        x, y = self.GetDesiredPosition(self.line_distance, self.line_angle)
+        # x, y = self.GetDesiredPosition(self.line_distance, self.line_angle)
         if self.isFinish
             self.cmd_pub.publish(Twist()) # stop robot
             self.finishPosition = True
             self.finishLineFollowing = True
         else
-            self.isFinish = self.GotoPoint(x, y)
+            self.isFinish = self.GotoPoint(self.x, self.y)
 
 
 
@@ -260,7 +260,7 @@ class Turtlebot3
             self.cmd_pub.publish(Twist()) # stop robot
             self.FinishPosition = True
         else
-            self.isFinish = self.GotoPoint(x, y)
+            self.isFinish = self.GotoPoint(self.x, self.y)
 
 
     def AvoidObject(self):
@@ -311,8 +311,13 @@ class Turtlebot3
         self.pillar_angle = data.linear.y 
         self.line_distance = data.angular.x 
         self.line_angle = data.angular.y
-
-
+        if self.pillar_distance == -1
+            if self.line_distance == -1
+                self.states = 2
+            else
+                self.x, self.y = GetDesiredPosition(self.line_distance, self.line_angle)
+        else
+            self.x, self.y = GetDesiredPosition(self.pillar_distance, self.pillar_angle)
 
     def CallbackLider(self, data):
 
